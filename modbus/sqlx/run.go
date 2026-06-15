@@ -14,7 +14,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // 纯 Go PgSQL
 )
 
-var Sqlx *sqlx.DB
+var DB *sqlx.DB
 
 func Run() {
 	var driver string
@@ -33,7 +33,7 @@ func Run() {
 	}
 	// 直接使用已经连接成功的 Sql 实例进行包装
 	// 第二个参数是驱动名称（如 "sqlite" 或 "mysql"），sqlx 需要它来决定 SQL 占位符风格
-	Sqlx = sqlx.NewDb(sql.Sql, driver)
+	DB = sqlx.NewDb(sql.DB, driver)
 
 	// 间隔 2 秒
 	time.Sleep(2 * time.Second)
@@ -41,7 +41,7 @@ func Run() {
 	// // 开始无限循环重连检测
 	for {
 		// 测试连接
-		err := Sqlx.Ping()
+		err := DB.Ping()
 		if err == nil {
 			fmt.Printf("✅ [SQLX] 数据库模块 连接成功！\n")
 			break // 连上了，跳出循环

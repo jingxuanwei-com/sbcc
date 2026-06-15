@@ -1,4 +1,4 @@
-package grom
+package gorm
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var Grom *gorm.DB
+var DB *gorm.DB
 
 // Run 接收一个已经连接好的原生 *sql.DB 句柄和驱动名称
 func Run() {
@@ -23,13 +23,13 @@ func Run() {
 
 	switch env.Get("DB_TYPE") {
 	case "sqlite", "sqllite", "sqlite3":
-		dialector = sqlite.Dialector{Conn: sql.Sql}
+		dialector = sqlite.Dialector{Conn: sql.DB}
 
 	case "pgsql", "postgres", "postgresql":
-		dialector = postgres.New(postgres.Config{Conn: sql.Sql})
+		dialector = postgres.New(postgres.Config{Conn: sql.DB})
 
 	case "mysql", "mariadb":
-		dialector = mysql.New(mysql.Config{Conn: sql.Sql})
+		dialector = mysql.New(mysql.Config{Conn: sql.DB})
 
 	default:
 		fmt.Printf("⚠️ [GROM] 数据库模块 配置错误！无法识别的数据库类型:%s\n", env.Get("DB_TYPE"))
@@ -40,13 +40,13 @@ func Run() {
 
 	// 初始化 GORM 实例
 	var err error
-	Grom, err = gorm.Open(dialector, &gorm.Config{
+	DB, err = gorm.Open(dialector, &gorm.Config{
 		// 这里可以根据需要配置 GORM 的行为
 		SkipDefaultTransaction: true, // 如果追求性能，可以跳过默认事务
 	})
 
 	if err != nil {
-		fmt.Printf("✅ [GORM] 绑定原生连接失败: %v\n", err)
+		fmt.Printf("❌ [GORM] 绑定原生连接失败: %v\n", err)
 	}
 
 	fmt.Printf("✅ [GORM] 已成功挂载到原生 %s 连接池\n", env.Get("DB_TYPE"))

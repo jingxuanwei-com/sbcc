@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"modbus/grom"
+	"modbus/gorm"
 	"modbus/home"
+	"modbus/podman"
 	"modbus/sql"
 	"modbus/sqlx"
 	"modbus/sub"
-	"modbus/web"
+	"modbus/chi"
 )
 
 func main() {
@@ -18,16 +19,17 @@ func main() {
 	fmt.Println("========================================")
 
 	// Web 引擎启动
-	web.Run()
+	chi.Run()
 
 	// 数据库模块启动
 	sql.Run()
 	sqlx.Run()
-	grom.Run()
+	gorm.Run()
 
 	// 功能模块启动
 	home.Run()
 	sub.Run()
+	podman.Run()
 
 	// gin.Run()
 

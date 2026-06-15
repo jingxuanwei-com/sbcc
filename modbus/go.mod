@@ -62,7 +62,6 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/libtnb/sqlite v1.1.1
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	gorm.io/gorm v1.31.1

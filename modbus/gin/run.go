@@ -2,7 +2,7 @@ package gin
 
 import (
 	"fmt"
-	"modbus/web"
+	web "modbus/chi"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

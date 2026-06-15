@@ -7,7 +7,7 @@ package home
 import (
 	"fmt"
 	"github.com/go-chi/chi/v5"
-	"modbus/web"
+	web "modbus/chi"
 	"net/http"
 )
 
@@ -22,7 +22,7 @@ func Run() {
 
 	// 最后一炮打到web底座，搞定！
 	web.Mux.Mount("/", r)
-	fmt.Println("🏠 [Home] 主页模块 加载完成！")
+	fmt.Println("✅ [Home] 主页模块 加载完成！")
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
