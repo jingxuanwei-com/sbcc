@@ -42,6 +42,5 @@ func Run() {
 	// 直接注册在 chi 的主路由上，与 home 模块互不冲突
 	web.Mux.Get(wsPath, GlobalHub.HandleWebSocket)
 
-	log.Printf("✅ [WebSocket] 模块加载完成！端点: ws://localhost:%s%s",
-		env.Get("CHI_PORT"), wsPath)
+	log.Printf("✅ [WebSocket] 已挂载到 Chi 底座，端点: %s", wsPath)
 }
