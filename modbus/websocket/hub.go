@@ -17,7 +17,20 @@ import (
 )
 
 // Hub 连接管理器，负责管理所有 WebSocket 客户端连接
+// 各模块可创建自己的 Hub 实例，互不干扰
+//
+// 用法：
+//
+//	hub := websocket.NewHub("my-module")
+//	hub.OnMessage = func(c *websocket.Client, msg []byte) { ... }
+//	web.Mux.Get("/ws", hub.HandleWebSocket)
 type Hub struct {
+	// Hub 名称（用于日志区分，如 "Home-Data"）
+	Name string
+
+	// 收到消息时的回调（为 nil 则仅打印日志）
+	OnMessage func(client *Client, data []byte)
+
 	// 读写锁，保证并发安全
 	mu sync.RWMutex
 
@@ -29,8 +42,10 @@ type Hub struct {
 }
 
 // NewHub 创建并初始化一个新的 Hub 实例
-func NewHub() *Hub {
+// name 用于日志标识，如 NewHub("Home-Data")
+func NewHub(name string) *Hub {
 	return &Hub{
+		Name:    name,
 		clients: make(map[string]*Client),
 		upgrader: websocket.Upgrader{
 			// 允许所有来源的连接（开发环境）
@@ -46,6 +61,14 @@ func NewHub() *Hub {
 	}
 }
 
+// logTag 返回带名称的日志标签
+func (h *Hub) logTag() string {
+	if h.Name == "" {
+		return "[WebSocket]"
+	}
+	return "[WebSocket-" + h.Name + "]"
+}
+
 // Register 注册一个新的客户端连接
 // client: 已握手成功的 WebSocket 客户端
 func (h *Hub) Register(client *Client) {
@@ -53,7 +76,7 @@ func (h *Hub) Register(client *Client) {
 	defer h.mu.Unlock()
 
 	h.clients[client.ID] = client
-	log.Printf("🔗 [WebSocket] 客户端已连接: %s（当前在线: %d）", client.ID, len(h.clients))
+	log.Printf("🔗 %s 客户端已连接: %s（当前在线: %d）", h.logTag(), client.ID, len(h.clients))
 }
 
 // Unregister 注销一个客户端连接
@@ -65,7 +88,7 @@ func (h *Hub) Unregister(clientID string) {
 	if client, ok := h.clients[clientID]; ok {
 		client.Conn.Close()
 		delete(h.clients, clientID)
-		log.Printf("🔌 [WebSocket] 客户端已断开: %s（当前在线: %d）", clientID, len(h.clients))
+		log.Printf("🔌 %s 客户端已断开: %s（当前在线: %d）", h.logTag(), clientID, len(h.clients))
 	}
 }
 
@@ -79,8 +102,7 @@ func (h *Hub) Broadcast(message []byte) {
 		select {
 		case client.Send <- message:
 		default:
-			// 客户端发送缓冲区已满，跳过
-			log.Printf("⚠️ [WebSocket] 客户端 %s 发送缓冲区已满，跳过消息", id)
+			log.Printf("⚠️ %s 客户端 %s 发送缓冲区已满，跳过消息", h.logTag(), id)
 		}
 	}
 }
@@ -94,21 +116,18 @@ func (h *Hub) Count() int {
 
 // HandleWebSocket 处理 WebSocket 握手请求
 // 将 HTTP 连接升级为 WebSocket，并启动读写协程
+// 可直接作为 chi 路由 handler 使用
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	// 将 HTTP 连接升级为 WebSocket 协议
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("❌ [WebSocket] 升级失败: %v", err)
+		log.Printf("❌ %s 升级失败: %v", h.logTag(), err)
 		return
 	}
 
-	// 创建客户端实例
 	client := NewClient(conn, h)
 
-	// 注册客户端
 	h.Register(client)
 
-	// 启动客户端的读写协程
 	go client.WritePump()
 	go client.ReadPump()
 }

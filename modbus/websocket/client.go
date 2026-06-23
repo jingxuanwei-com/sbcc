@@ -86,10 +86,12 @@ func (c *Client) ReadPump() {
 			break
 		}
 
-		log.Printf("📩 [WebSocket] 收到来自 %s 的消息: %s", c.ID, string(message))
-
-		// Todo: 处理收到的消息（路由到对应的业务逻辑）
-		// 示例: c.Hub.Broadcast(message)
+		if c.Hub.OnMessage != nil {
+			// 调用模块自定义的消息处理
+			c.Hub.OnMessage(c, message)
+		} else {
+			log.Printf("📩 %s 收到来自 %s 的消息: %s", c.Hub.logTag(), c.ID, string(message))
+		}
 	}
 }
 
