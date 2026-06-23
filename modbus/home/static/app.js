@@ -1,4 +1,5 @@
-const wsUrl = `ws://${location.host}/ws`;
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+const wsUrl = `${protocol}//${location.host}/ws`;
 let ws;
 let history = [];
 
