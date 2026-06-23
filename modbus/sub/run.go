@@ -90,7 +90,7 @@ func sub(w http.ResponseWriter, r *http.Request) {
 	download := int64(1024 * 1024 * 500)
 	// 到期时间(时间戳)
 	expire := time.Date(2077, 12, 10, 0, 0, 0, 0, time.Local).Unix()
-	weburl := "http://localhost:9081"
+	weburl := "https://sbcc.1szt.com"
 
 	// Header 文档
 	//https://www.clashverge.dev/guide/url_schemes.html
