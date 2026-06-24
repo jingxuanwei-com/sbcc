@@ -1,5 +1,5 @@
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const wsUrl = `${protocol}//${location.host}/ws`;
+const wsUrl = `${protocol}//${location.host}/websocket`;
 let ws;
 let history = [];
 
@@ -15,8 +15,16 @@ function connect() {
     };
 
     ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        updateDisplay(data);
+        const { type, payload } = JSON.parse(event.data);
+
+        switch (type) {
+            case 'home.random':
+                updateDisplay(payload);
+                break;
+
+            default:
+                console.log('未知消息类型:', type, payload);
+        }
     };
 
     ws.onclose = () => {

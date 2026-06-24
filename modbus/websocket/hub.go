@@ -9,9 +9,10 @@
 package websocket
 
 import (
-	"log"      // 日志输出
-	"net/http" // HTTP 处理
-	"sync"     // 并发安全（读写锁）
+	"encoding/json" // JSON 编解码
+	"log"           // 日志输出
+	"net/http"      // HTTP 处理
+	"sync"          // 并发安全（读写锁）
 
 	"github.com/gorilla/websocket" // WebSocket 库
 )
@@ -39,6 +40,36 @@ type Hub struct {
 
 	// HTTP 升级器（将 HTTP 连接升级为 WebSocket）
 	upgrader websocket.Upgrader
+}
+
+// ============================================================
+//  统一消息协议
+//  所有 WebSocket 消息统一使用该结构体，
+//  前端通过 type 字段区分消息来源与事件类型
+// ============================================================
+
+// Message 标准 WebSocket 消息结构
+// Type: "module.event" 点号分隔，如 "home.random"、"podman.status"
+// Payload: 实际数据，由具体模块定义
+type Message struct {
+	Type    string      `json:"type"`
+	Payload interface{} `json:"payload"`
+}
+
+// GlobalHub 全局统一的 WebSocket Hub
+// 所有模块共享这一个 Hub，前端只需连一条 WS
+var GlobalHub = NewHub("Global")
+
+// BroadcastToType 按指定 type 广播消息
+// msgType: "module.event" 格式
+// payload: 实际数据（会被 JSON 序列化）
+func (h *Hub) BroadcastToType(msgType string, payload interface{}) {
+	msg, err := json.Marshal(Message{Type: msgType, Payload: payload})
+	if err != nil {
+		log.Printf("❌ %s 序列化消息失败: %v", h.logTag(), err)
+		return
+	}
+	h.Broadcast(msg)
 }
 
 // NewHub 创建并初始化一个新的 Hub 实例

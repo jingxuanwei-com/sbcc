@@ -9,6 +9,7 @@ import (
 	"modbus/sql"
 	"modbus/sqlx"
 	"modbus/sub"
+	"modbus/websocket"
 )
 
 func main() {
@@ -23,6 +24,10 @@ func main() {
 
 	// chi 引擎启动
 	chi.Run()
+
+	// WebSocket 全局端点注册
+	websocket.Run()
+
 	// gRPC 服务启动
 	// grpc.Run()
 

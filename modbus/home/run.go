@@ -32,7 +32,6 @@ func Run() {
 
 	r.Group(func(r chi.Router) {
 		r.Get("/", home)
-		r.Get("/ws", handleData)
 	})
 
 	// 最后一炮打到web底座，搞定！
