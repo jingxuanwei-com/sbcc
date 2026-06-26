@@ -6,6 +6,7 @@ import (
 	"modbus/gorm"
 	"modbus/home"
 	"modbus/podman"
+	"modbus/scs"
 	"modbus/sql"
 	"modbus/sqlx"
 	"modbus/sub"
@@ -35,6 +36,9 @@ func main() {
 	sql.Run()
 	sqlx.Run()
 	gorm.Run()
+
+	// Session 管理（依赖数据库）
+	scs.Run()
 
 	// 功能模块启动
 	home.Run()
