@@ -5,6 +5,7 @@ import (
 	"modbus/chi"
 	"modbus/gorm"
 	"modbus/home"
+	"modbus/login"
 	"modbus/podman"
 	"modbus/scs"
 	"modbus/sql"
@@ -39,6 +40,9 @@ func main() {
 
 	// Session 管理（依赖数据库）
 	scs.Run()
+
+	// 登录认证模块（依赖 gorm + scs）
+	login.Run()
 
 	// 功能模块启动
 	home.Run()
