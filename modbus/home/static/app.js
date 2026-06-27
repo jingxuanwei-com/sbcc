@@ -139,6 +139,14 @@ btnLogout.addEventListener('click', async () => {
   }
 })
 
+// ─── 发送测试消息 ────────────────────────────────────
+
+document.getElementById('btnTestMsg').addEventListener('click', () => {
+  if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+    window.ws.send(JSON.stringify({hello: 'world', time: new Date().toLocaleTimeString()}))
+  }
+})
+
 // ─── 检查登录状态 ──────────────────────────────────────
 
 async function checkLoginStatus() {
