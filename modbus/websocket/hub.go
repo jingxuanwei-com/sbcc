@@ -1,25 +1,3 @@
-// ============================================================
-//
-//	WebSocket Hub — SBCC 控制中心
-//	功能：纯消息路由，支持按用户/按连接发消息
-//
-//	用法：
-//	  hub := ws.NewHub()
-//
-//	  // 添加客户端（由服务端注册）
-//	  hub.AddClient("user123", "connA")
-//	  hub.AddClient("user123", "connB")
-//
-//	  // 全局广播
-//	  hub.Broadcast([]byte("系统公告"))
-//
-//	  // 给某个用户所有连接发
-//	  hub.SendToUser("user123", []byte("你好"))
-//
-//	  // 给某个连接单独发
-//	  hub.SendToConn("connA", []byte("只给 connA"))
-//
-// ============================================================
 package websocket
 
 import (
@@ -28,14 +6,14 @@ import (
 	"sync"
 )
 
-// Hub — 消息路由器
+// Hub — WebSocket 消息路由器
 type Hub struct {
 	Name      string
-	OnMessage func(conn *Conn, data []byte) // 收到消息回调
+	OnMessage func(conn *Conn, data []byte)
 
 	mu    sync.RWMutex
-	conns map[string]*Conn           // connID → Conn
-	users map[string]map[string]bool // userID → set of connIDs
+	conns map[string]*Conn
+	users map[string]map[string]bool
 }
 
 // GlobalHub — 全局默认 Hub
@@ -152,15 +130,6 @@ func (h *Hub) SendToConn(connID string, data []byte) bool {
 	return conn.Send(data)
 }
 
-// SendToConnType — 格式化后发给指定连接
-func (h *Hub) SendToConnType(connID string, msgType string, payload interface{}) bool {
-	msg, err := json.Marshal(Message{Type: msgType, Payload: payload})
-	if err != nil {
-		return false
-	}
-	return h.SendToConn(connID, msg)
-}
-
 // SendToUser — 给用户所有连接发消息
 func (h *Hub) SendToUser(userID string, data []byte) {
 	h.mu.RLock()
@@ -177,45 +146,9 @@ func (h *Hub) SendToUser(userID string, data []byte) {
 	}
 }
 
-// SendToUserType — 格式化后发给用户
-func (h *Hub) SendToUserType(userID string, msgType string, payload interface{}) {
-	msg, err := json.Marshal(Message{Type: msgType, Payload: payload})
-	if err != nil {
-		return
-	}
-	h.SendToUser(userID, msg)
-}
-
 // Count — 在线连接数
 func (h *Hub) Count() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.conns)
-}
-
-// Conns — 返回所有连接 ID 列表
-func (h *Hub) Conns() []string {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	ids := make([]string, 0, len(h.conns))
-	for id := range h.conns {
-		ids = append(ids, id)
-	}
-	return ids
-}
-
-// UserConns — 返回用户所有连接 ID
-func (h *Hub) UserConns(userID string) []string {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	connIDs, ok := h.users[userID]
-	if !ok {
-		return nil
-	}
-	ids := make([]string, 0, len(connIDs))
-	for id := range connIDs {
-		ids = append(ids, id)
-	}
-	return ids
 }
