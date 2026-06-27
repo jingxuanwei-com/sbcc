@@ -27,9 +27,6 @@ func main() {
 	// chi 引擎启动
 	chi.Run()
 
-	// WebSocket 全局端点注册
-	websocket.Run()
-
 	// gRPC 服务启动
 	// grpc.Run()
 
@@ -40,6 +37,9 @@ func main() {
 
 	// Session 管理（依赖数据库）
 	scs.Run()
+
+	// WebSocket 全局端点注册（依赖 scs）
+	websocket.Run()
 
 	// 用户模块（依赖 gorm + scs）
 	user.Run()
