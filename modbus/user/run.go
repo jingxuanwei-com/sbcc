@@ -40,6 +40,7 @@ type apiResponse struct {
 
 type meResponse struct {
 	LoggedIn bool   `json:"logged_in"`
+	UserID   int64  `json:"user_id,omitempty"`
 	Username string `json:"username,omitempty"`
 }
 
@@ -157,6 +158,7 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, meResponse{
 		LoggedIn: true,
+		UserID:   userID,
 		Username: username,
 	})
 }

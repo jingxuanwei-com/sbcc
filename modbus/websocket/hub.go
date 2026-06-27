@@ -1,8 +1,23 @@
 // ============================================================
 //
-//	WebSocket Hub 连接管理器 — SBCC 控制中心
-//	功能：管理所有客户端，支持按用户/按 ID 发消息
-//	依赖：github.com/coder/websocket
+//	WebSocket Hub — SBCC 控制中心
+//	功能：纯消息路由，支持按用户/按连接发消息
+//
+//	用法：
+//	  hub := ws.NewHub()
+//
+//	  // 添加客户端（由服务端注册）
+//	  hub.AddClient("user123", "connA")
+//	  hub.AddClient("user123", "connB")
+//
+//	  // 全局广播
+//	  hub.Broadcast([]byte("系统公告"))
+//
+//	  // 给某个用户所有连接发
+//	  hub.SendToUser("user123", []byte("你好"))
+//
+//	  // 给某个连接单独发
+//	  hub.SendToConn("connA", []byte("只给 connA"))
 //
 // ============================================================
 package websocket
@@ -10,30 +25,23 @@ package websocket
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"sync"
-
-	"github.com/coder/websocket"
 )
 
-// ═══════════════════════════════════════════════════════════════
-//
-//	Hub — WebSocket 客户端连接管理器
-//
-// ═══════════════════════════════════════════════════════════════
+// Hub — 消息路由器
 type Hub struct {
 	Name      string
-	OnMessage func(client *Client, data []byte)
+	OnMessage func(conn *Conn, data []byte) // 收到消息回调
 
-	mu      sync.RWMutex
-	clients map[string]*Client        // clientID → Client
-	users   map[int64]map[string]bool // userID → set of clientIDs
+	mu    sync.RWMutex
+	conns map[string]*Conn           // connID → Conn
+	users map[string]map[string]bool // userID → set of connIDs
 }
 
-// GlobalHub — 全局统一的 WebSocket Hub，所有模块共用
+// GlobalHub — 全局默认 Hub
 var GlobalHub = NewHub("Global")
 
-// Message — 标准 WebSocket 消息结构
+// Message — 标准消息结构
 type Message struct {
 	Type    string      `json:"type"`
 	Payload interface{} `json:"payload"`
@@ -42,77 +50,84 @@ type Message struct {
 // NewHub — 创建 Hub
 func NewHub(name string) *Hub {
 	return &Hub{
-		Name:    name,
-		clients: make(map[string]*Client),
-		users:   make(map[int64]map[string]bool),
+		Name:  name,
+		conns: make(map[string]*Conn),
+		users: make(map[string]map[string]bool),
 	}
 }
 
 func (h *Hub) logTag() string {
 	if h.Name == "" {
-		return "[WebSocket]"
+		return "[WS]"
 	}
-	return "[WebSocket-" + h.Name + "]"
+	return "[WS-" + h.Name + "]"
 }
 
-// Register — 注册客户端。如果 clientID 已存在则替换旧连接。
-func (h *Hub) Register(client *Client) {
+// AddClient — 添加客户端。如果 connID 已存在则替换。
+func (h *Hub) AddClient(userID, connID string) *Conn {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if old, ok := h.clients[client.ID]; ok {
-		log.Printf("♻️ %s 客户端 %s 重复连接，替换旧连接", h.logTag(), client.ID)
+	// 替换旧连接
+	if old, ok := h.conns[connID]; ok {
 		close(old.send)
-		delete(h.clients, client.ID)
-		if old.UserID > 0 {
-			delete(h.users[old.UserID], old.ID)
+		delete(h.conns, connID)
+		if old.UserID != "" {
+			delete(h.users[old.UserID], connID)
 			if len(h.users[old.UserID]) == 0 {
 				delete(h.users, old.UserID)
 			}
 		}
 	}
 
-	h.clients[client.ID] = client
-	if client.UserID > 0 {
-		if h.users[client.UserID] == nil {
-			h.users[client.UserID] = make(map[string]bool)
+	conn := newConn(connID, userID, h)
+	h.conns[connID] = conn
+
+	if userID != "" {
+		if h.users[userID] == nil {
+			h.users[userID] = make(map[string]bool)
 		}
-		h.users[client.UserID][client.ID] = true
+		h.users[userID][connID] = true
 	}
 
-	log.Printf("🔗 %s 客户端已连接: %s（用户: %s, 在线: %d）",
-		h.logTag(), client.ID, client.Username, len(h.clients))
+	log.Printf("🔗 %s 添加连接: %s（用户: %s, 在线: %d）",
+		h.logTag(), connID, userID, len(h.conns))
+
+	return conn
 }
 
-// Unregister — 注销客户端
-func (h *Hub) Unregister(client *Client) {
+// RemoveConn — 移除连接
+func (h *Hub) RemoveConn(connID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if _, ok := h.clients[client.ID]; ok {
-		close(client.send)
-		delete(h.clients, client.ID)
-		if client.UserID > 0 {
-			delete(h.users[client.UserID], client.ID)
-			if len(h.users[client.UserID]) == 0 {
-				delete(h.users, client.UserID)
+	if conn, ok := h.conns[connID]; ok {
+		close(conn.send)
+		delete(h.conns, connID)
+		if conn.UserID != "" {
+			delete(h.users[conn.UserID], connID)
+			if len(h.users[conn.UserID]) == 0 {
+				delete(h.users, conn.UserID)
 			}
 		}
-		log.Printf("🔌 %s 客户端已断开: %s（在线: %d）", h.logTag(), client.ID, len(h.clients))
+		log.Printf("🔌 %s 移除连接: %s（在线: %d）", h.logTag(), connID, len(h.conns))
 	}
 }
 
-// Broadcast — 广播给所有客户端
+// GetConn — 获取连接
+func (h *Hub) GetConn(connID string) *Conn {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.conns[connID]
+}
+
+// Broadcast — 广播给所有连接
 func (h *Hub) Broadcast(data []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	for _, client := range h.clients {
-		select {
-		case client.send <- data:
-		default:
-			log.Printf("⚠️ %s 客户端 %s 缓冲区满，丢消息", h.logTag(), client.ID)
-		}
+	for _, conn := range h.conns {
+		conn.Send(data)
 	}
 }
 
@@ -120,61 +135,50 @@ func (h *Hub) Broadcast(data []byte) {
 func (h *Hub) BroadcastToType(msgType string, payload interface{}) {
 	msg, err := json.Marshal(Message{Type: msgType, Payload: payload})
 	if err != nil {
-		log.Printf("❌ %s 序列化消息失败: %v", h.logTag(), err)
 		return
 	}
 	h.Broadcast(msg)
 }
 
-// SendToClient — 给指定 clientID 发消息。返回是否发送成功。
-func (h *Hub) SendToClient(clientID string, data []byte) bool {
+// SendToConn — 给指定连接发消息
+func (h *Hub) SendToConn(connID string, data []byte) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	client, ok := h.clients[clientID]
+	conn, ok := h.conns[connID]
 	if !ok {
 		return false
 	}
-	select {
-	case client.send <- data:
-		return true
-	default:
-		log.Printf("⚠️ %s 发送给 %s 失败：缓冲区满", h.logTag(), clientID)
-		return false
-	}
+	return conn.Send(data)
 }
 
-// SendToClientType — 格式化后发给指定 clientID
-func (h *Hub) SendToClientType(clientID string, msgType string, payload interface{}) bool {
+// SendToConnType — 格式化后发给指定连接
+func (h *Hub) SendToConnType(connID string, msgType string, payload interface{}) bool {
 	msg, err := json.Marshal(Message{Type: msgType, Payload: payload})
 	if err != nil {
 		return false
 	}
-	return h.SendToClient(clientID, msg)
+	return h.SendToConn(connID, msg)
 }
 
-// SendToUser — 给指定用户的所有连接发消息
-func (h *Hub) SendToUser(userID int64, data []byte) {
+// SendToUser — 给用户所有连接发消息
+func (h *Hub) SendToUser(userID string, data []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	clientIDs, ok := h.users[userID]
+	connIDs, ok := h.users[userID]
 	if !ok {
 		return
 	}
-	for cid := range clientIDs {
-		if client, ok := h.clients[cid]; ok {
-			select {
-			case client.send <- data:
-			default:
-				log.Printf("⚠️ %s 发送给用户 %d(%s) 失败：缓冲区满", h.logTag(), userID, cid)
-			}
+	for cid := range connIDs {
+		if conn, ok := h.conns[cid]; ok {
+			conn.Send(data)
 		}
 	}
 }
 
-// SendToUserType — 格式化后发给指定用户
-func (h *Hub) SendToUserType(userID int64, msgType string, payload interface{}) {
+// SendToUserType — 格式化后发给用户
+func (h *Hub) SendToUserType(userID string, msgType string, payload interface{}) {
 	msg, err := json.Marshal(Message{Type: msgType, Payload: payload})
 	if err != nil {
 		return
@@ -182,29 +186,36 @@ func (h *Hub) SendToUserType(userID int64, msgType string, payload interface{}) 
 	h.SendToUser(userID, msg)
 }
 
-// Count — 在线客户端数
+// Count — 在线连接数
 func (h *Hub) Count() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return len(h.clients)
+	return len(h.conns)
 }
 
-// HandleWebSocket — WebSocket 握手入口
-// 需通过 handleWS（run.go）调用，会从 context 中读取用户信息。
-func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, userID int64, username string) {
-	clientID := r.URL.Query().Get("client_id")
-
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true,
-	})
-	if err != nil {
-		log.Printf("❌ %s 升级失败: %v", h.logTag(), err)
-		return
+// Conns — 返回所有连接 ID 列表
+func (h *Hub) Conns() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	ids := make([]string, 0, len(h.conns))
+	for id := range h.conns {
+		ids = append(ids, id)
 	}
+	return ids
+}
 
-	client := NewClient(conn, h, clientID, userID, username)
-	h.Register(client)
+// UserConns — 返回用户所有连接 ID
+func (h *Hub) UserConns(userID string) []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 
-	go client.WritePump()
-	client.ReadPump()
+	connIDs, ok := h.users[userID]
+	if !ok {
+		return nil
+	}
+	ids := make([]string, 0, len(connIDs))
+	for id := range connIDs {
+		ids = append(ids, id)
+	}
+	return ids
 }
