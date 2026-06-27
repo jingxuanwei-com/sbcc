@@ -1,12 +1,12 @@
 // ============================================================
 //
-//	认证模块 — SBCC 控制中心
-//	功能：登录/注销/注册/状态查询，使用 Scs 管理 Session
+//	用户模块 — SBCC 控制中心
+//	功能：登录/注销/注册/状态查询，管理 users 表
 //	依赖：gorm、scs
 //	启动方式：由 modbus/main 模块统一调用
 //
 // ============================================================
-package auth
+package user
 
 import (
 	"encoding/json"
@@ -45,18 +45,18 @@ type meResponse struct {
 
 // ═══════════════════════════════════════════════════════════════
 //
-//	Run — 认证模块启动入口
+//	Run — 用户模块启动入口
 //
 //	在 main/run.go 里调用：
 //	  gorm.Run()
 //	  scs.Run()
-//	  auth.Run()   ← 必须在 gorm.Run() 和 scs.Run() 之后
+//	  user.Run()   ← 必须在 gorm.Run() 和 scs.Run() 之后
 //
 //	注册路由：
-//	  POST /api/auth            — 登录
-//	  POST /api/auth/logout     — 注销
-//	  GET  /api/auth/me         — 查看当前登录状态
-//	  POST /api/auth/register   — 注册新用户
+//	  POST /api/user            — 登录
+//	  POST /api/user/logout     — 注销
+//	  GET  /api/user/me         — 查看当前登录状态
+//	  POST /api/user/register   — 注册新用户
 //
 // ═══════════════════════════════════════════════════════════════
 func Run() {
@@ -65,7 +65,7 @@ func Run() {
 
 	r := chi.NewRouter()
 
-	// 所有 /api/auth/* 路由启用 Session 中间件
+	// 所有 /api/user/* 路由启用 Session 中间件
 	r.Group(func(r chi.Router) {
 		r.Use(scs.Scs.LoadAndSave)
 
@@ -75,8 +75,8 @@ func Run() {
 		r.Post("/register", handleRegister)
 	})
 
-	web.Mux.Mount("/api/auth", r)
-	log.Print("✅ [Auth] 认证模块 加载完成！")
+	web.Mux.Mount("/api/user", r)
+	log.Print("✅ [User] 用户模块 加载完成！")
 }
 
 // ─── handler: 登录 ─────────────────────────────────────────
@@ -235,14 +235,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// RequireAuth 中间件：未登录则返回 401
+// RequireLogin 中间件：未登录则返回 401
 // 用法：
 //
 //	r.Group(func(r chi.Router) {
-//	    r.Use(auth.RequireAuth)
+//	    r.Use(user.RequireLogin)
 //	    r.Get("/protected", myHandler)
 //	})
-func RequireAuth(next http.Handler) http.Handler {
+func RequireLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := scs.Scs.GetInt64(r.Context(), "user_id")
 		if userID == 0 {

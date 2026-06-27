@@ -1,4 +1,4 @@
-package auth
+package user
 
 import (
 	"log"
@@ -21,8 +21,8 @@ func (User) TableName() string {
 func InitDB() {
 	err := gorm.DB.AutoMigrate(&User{})
 	if err != nil {
-		log.Printf("⚠️ [Auth] 数据库表迁移失败: %v", err)
+		log.Printf("⚠️ [User] 数据库表迁移失败: %v", err)
 	} else {
-		log.Print("✅ [Auth] 数据库表迁移成功")
+		log.Print("✅ [User] 数据库表迁移成功")
 	}
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"modbus/auth"
 	"modbus/chi"
 	"modbus/gorm"
 	"modbus/home"
@@ -11,6 +10,7 @@ import (
 	"modbus/sql"
 	"modbus/sqlx"
 	"modbus/sub"
+	"modbus/user"
 	"modbus/websocket"
 )
 
@@ -41,8 +41,8 @@ func main() {
 	// Session 管理（依赖数据库）
 	scs.Run()
 
-	// 认证模块（依赖 gorm + scs）
-	auth.Run()
+	// 用户模块（依赖 gorm + scs）
+	user.Run()
 
 	// 功能模块启动
 	home.Run()
