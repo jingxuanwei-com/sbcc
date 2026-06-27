@@ -1,12 +1,12 @@
 // ============================================================
 //
-//	登录认证模块 — SBCC 控制中心
-//	功能：用户登录/注销/状态查询，使用 Scs 管理 Session
+//	认证模块 — SBCC 控制中心
+//	功能：登录/注销/注册/状态查询，使用 Scs 管理 Session
 //	依赖：gorm、scs
 //	启动方式：由 modbus/main 模块统一调用
 //
 // ============================================================
-package login
+package auth
 
 import (
 	"encoding/json"
@@ -28,7 +28,12 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-type loginResponse struct {
+type registerRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type apiResponse struct {
 	Ok      bool   `json:"ok"`
 	Message string `json:"message,omitempty"`
 }
@@ -40,17 +45,18 @@ type meResponse struct {
 
 // ═══════════════════════════════════════════════════════════════
 //
-//	Run — 登录模块启动入口
+//	Run — 认证模块启动入口
 //
 //	在 main/run.go 里调用：
 //	  gorm.Run()
 //	  scs.Run()
-//	  login.Run()   ← 必须在 gorm.Run() 和 scs.Run() 之后
+//	  auth.Run()   ← 必须在 gorm.Run() 和 scs.Run() 之后
 //
 //	注册路由：
-//	  POST /api/login       — 登录
-//	  POST /api/login/logout — 注销
-//	  GET  /api/login/me    — 查看当前登录状态
+//	  POST /api/auth            — 登录
+//	  POST /api/auth/logout     — 注销
+//	  GET  /api/auth/me         — 查看当前登录状态
+//	  POST /api/auth/register   — 注册新用户
 //
 // ═══════════════════════════════════════════════════════════════
 func Run() {
@@ -59,68 +65,68 @@ func Run() {
 
 	r := chi.NewRouter()
 
-	// 所有 /api/login/* 路由启用 Session 中间件
+	// 所有 /api/auth/* 路由启用 Session 中间件
 	r.Group(func(r chi.Router) {
 		r.Use(scs.Scs.LoadAndSave)
 
 		r.Post("/", handleLogin)
 		r.Post("/logout", handleLogout)
 		r.Get("/me", handleMe)
+		r.Post("/register", handleRegister)
 	})
 
-	web.Mux.Mount("/api/login", r)
-	log.Print("✅ [Login] 登录认证模块 加载完成！")
+	web.Mux.Mount("/api/auth", r)
+	log.Print("✅ [Auth] 认证模块 加载完成！")
 }
 
 // ─── handler: 登录 ─────────────────────────────────────────
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	// 1. 解析 JSON 请求体
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, loginResponse{
+		writeJSON(w, http.StatusBadRequest, apiResponse{
 			Ok: false, Message: "请求数据格式错误",
 		})
 		return
 	}
 
 	if req.Username == "" || req.Password == "" {
-		writeJSON(w, http.StatusBadRequest, loginResponse{
+		writeJSON(w, http.StatusBadRequest, apiResponse{
 			Ok: false, Message: "用户名和密码不能为空",
 		})
 		return
 	}
 
-	// 2. 从数据库查询用户
+	// 从数据库查询用户
 	var user User
 	err := gorm.DB.Where("username = ?", req.Username).First(&user).Error
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, loginResponse{
+		writeJSON(w, http.StatusUnauthorized, apiResponse{
 			Ok: false, Message: "用户名或密码错误",
 		})
 		return
 	}
 
-	// 3. 校验密码
+	// 校验密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		writeJSON(w, http.StatusUnauthorized, loginResponse{
+		writeJSON(w, http.StatusUnauthorized, apiResponse{
 			Ok: false, Message: "用户名或密码错误",
 		})
 		return
 	}
 
-	// 4. 登成功 → 续命 Session token（防 Session 固定攻击）
+	// 续命 Session token（防 Session 固定攻击）
 	if err := scs.Scs.RenewToken(r.Context()); err != nil {
-		writeJSON(w, http.StatusInternalServerError, loginResponse{
+		writeJSON(w, http.StatusInternalServerError, apiResponse{
 			Ok: false, Message: "服务器内部错误",
 		})
 		return
 	}
 
-	// 5. 写入 Session
+	// 写入 Session
 	scs.Scs.Put(r.Context(), "user_id", user.ID)
 	scs.Scs.Put(r.Context(), "username", user.Username)
 
-	writeJSON(w, http.StatusOK, loginResponse{
+	writeJSON(w, http.StatusOK, apiResponse{
 		Ok: true, Message: "登录成功",
 	})
 }
@@ -128,13 +134,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 // ─── handler: 注销 ─────────────────────────────────────────
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	if err := scs.Scs.Destroy(r.Context()); err != nil {
-		writeJSON(w, http.StatusInternalServerError, loginResponse{
+		writeJSON(w, http.StatusInternalServerError, apiResponse{
 			Ok: false, Message: "注销失败",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, loginResponse{
+	writeJSON(w, http.StatusOK, apiResponse{
 		Ok: true, Message: "已注销",
 	})
 }
@@ -155,6 +161,72 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ─── handler: 注册 ─────────────────────────────────────────
+func handleRegister(w http.ResponseWriter, r *http.Request) {
+	var req registerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Ok: false, Message: "请求数据格式错误",
+		})
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Ok: false, Message: "用户名和密码不能为空",
+		})
+		return
+	}
+
+	if len(req.Password) < 6 {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Ok: false, Message: "密码长度不能少于6位",
+		})
+		return
+	}
+
+	// 检查用户名是否已存在
+	var count int64
+	gorm.DB.Model(&User{}).Where("username = ?", req.Username).Count(&count)
+	if count > 0 {
+		writeJSON(w, http.StatusConflict, apiResponse{
+			Ok: false, Message: "用户名已存在",
+		})
+		return
+	}
+
+	// 加密密码
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse{
+			Ok: false, Message: "服务器内部错误",
+		})
+		return
+	}
+
+	// 创建用户
+	user := User{
+		Username:     req.Username,
+		PasswordHash: string(hash),
+	}
+	if err := gorm.DB.Create(&user).Error; err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse{
+			Ok: false, Message: "注册失败，请稍后重试",
+		})
+		return
+	}
+
+	// 注册成功后自动登录
+	if err := scs.Scs.RenewToken(r.Context()); err == nil {
+		scs.Scs.Put(r.Context(), "user_id", user.ID)
+		scs.Scs.Put(r.Context(), "username", user.Username)
+	}
+
+	writeJSON(w, http.StatusCreated, apiResponse{
+		Ok: true, Message: "注册成功",
+	})
+}
+
 // ─── 辅助函数 ─────────────────────────────────────────────
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -167,14 +239,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // 用法：
 //
 //	r.Group(func(r chi.Router) {
-//	    r.Use(login.RequireAuth)
+//	    r.Use(auth.RequireAuth)
 //	    r.Get("/protected", myHandler)
 //	})
 func RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := scs.Scs.GetInt64(r.Context(), "user_id")
 		if userID == 0 {
-			writeJSON(w, http.StatusUnauthorized, loginResponse{
+			writeJSON(w, http.StatusUnauthorized, apiResponse{
 				Ok: false, Message: "请先登录",
 			})
 			return
