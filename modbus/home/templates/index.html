@@ -7,10 +7,46 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="container">
+    <!-- ─── 登录弹窗 ──────────────────────────── -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-box">
+            <div class="login-header">SBCC 控制中心</div>
+            <div class="login-tabs">
+                <span class="login-tab active" data-tab="login">登录</span>
+                <span class="login-tab" data-tab="register">注册</span>
+            </div>
+
+            <!-- 登录表单 -->
+            <form id="loginForm" class="login-form">
+                <input type="text" id="loginUsername" placeholder="用户名" autocomplete="username" required>
+                <input type="password" id="loginPassword" placeholder="密码" autocomplete="current-password" required>
+                <button type="submit">登 录</button>
+                <p class="login-error" id="loginError"></p>
+            </form>
+
+            <!-- 注册表单 -->
+            <form id="registerForm" class="login-form" style="display:none">
+                <input type="text" id="registerUsername" placeholder="用户名" autocomplete="off" required>
+                <input type="password" id="registerPassword" placeholder="密码（至少6位）" autocomplete="new-password" required>
+                <button type="submit">注 册</button>
+                <p class="login-error" id="registerError"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- ─── 主页面 ────────────────────────────── -->
+    <div class="container" id="mainContent" style="display:none">
         <header>
-            <h1>SBCC 控制中心</h1>
-            <p>实时数据监控</p>
+            <div class="header-top">
+                <div>
+                    <h1>SBCC 控制中心</h1>
+                    <p>实时数据监控</p>
+                </div>
+                <div class="user-info">
+                    <span class="user-name" id="userName"></span>
+                    <button class="btn-logout" id="btnLogout">注销</button>
+                </div>
+            </div>
         </header>
 
         <div class="status-bar">

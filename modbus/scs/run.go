@@ -9,6 +9,7 @@
 package scs
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -36,8 +37,9 @@ var Scs *scs.SessionManager
 //
 //	做了三件事：
 //	  1. 初始化 Session 配置（过期时间等）
-//	  2. 根据数据库类型选择对应的 SCS 存储后端
-//	  3. 暴露 Scs 供其他模块使用
+//	  2. 创建 sessions 表
+//	  3. 根据数据库类型选择对应的 SCS 存储后端
+//	  4. 暴露 Scs 供其他模块使用
 //
 // ═══════════════════════════════════════════════════════════════
 func Run() {
@@ -57,13 +59,16 @@ func Run() {
 		Scs.IdleTimeout = time.Duration(idle) * time.Second
 	}
 
-	// ─── 3. 选择存储后端 ──────────────────────────────────
+	// ─── 3. 创建 sessions 表 & 选择存储后端 ────────────────
 	switch env.Get("DB_TYPE") {
 	case "sqlite", "sqllite", "sqlite3":
+		initTableSQLite()
 		Scs.Store = sqlite3store.New(dbsql.DB)
 	case "pgsql", "postgres", "postgresql":
+		initTablePostgres()
 		Scs.Store = postgresstore.New(dbsql.DB)
 	case "mysql", "mariadb":
+		initTableMySQL()
 		Scs.Store = mysqlstore.New(dbsql.DB)
 	default:
 		log.Fatalf("⚠️ [Scs] 不支持的数据库类型: %s", env.Get("DB_TYPE"))
@@ -71,4 +76,39 @@ func Run() {
 	}
 
 	log.Print("✅ [Scs] Session 管理模块 加载完成！")
+}
+
+// ─── 建表 ─────────────────────────────────────────────
+
+func initTableSQLite() {
+	_, err := dbsql.DB.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		token TEXT PRIMARY KEY,
+		data BLOB NOT NULL,
+		expiry REAL NOT NULL
+	)`, "sessions"))
+	if err != nil {
+		log.Fatalf("⚠️ [Scs] 创建 sessions 表失败: %v", err)
+	}
+}
+
+func initTablePostgres() {
+	_, err := dbsql.DB.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		token TEXT PRIMARY KEY,
+		data BYTEA NOT NULL,
+		expiry TIMESTAMPTZ NOT NULL
+	)`, "sessions"))
+	if err != nil {
+		log.Fatalf("⚠️ [Scs] 创建 sessions 表失败: %v", err)
+	}
+}
+
+func initTableMySQL() {
+	_, err := dbsql.DB.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		token VARCHAR(255) PRIMARY KEY,
+		data BLOB NOT NULL,
+		expiry TIMESTAMP(6) NOT NULL
+	)`, "sessions"))
+	if err != nil {
+		log.Fatalf("⚠️ [Scs] 创建 sessions 表失败: %v", err)
+	}
 }

@@ -1,3 +1,119 @@
+// ─── 登录状态 ──────────────────────────────────────────
+let loggedIn = false;
+
+// ─── DOM 引用 ─────────────────────────────────────────
+const loginOverlay = document.getElementById('loginOverlay');
+const mainContent = document.getElementById('mainContent');
+const userName = document.getElementById('userName');
+const btnLogout = document.getElementById('btnLogout');
+
+const loginForm = document.getElementById('loginForm');
+const loginUsername = document.getElementById('loginUsername');
+const loginPassword = document.getElementById('loginPassword');
+const loginError = document.getElementById('loginError');
+
+const registerForm = document.getElementById('registerForm');
+const registerUsername = document.getElementById('registerUsername');
+const registerPassword = document.getElementById('registerPassword');
+const registerError = document.getElementById('registerError');
+
+// ─── Tab 切换 ────────────────────────────────────────
+document.querySelectorAll('.login-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const show = tab.dataset.tab;
+        loginForm.style.display = show === 'login' ? '' : 'none';
+        registerForm.style.display = show === 'register' ? '' : 'none';
+        loginError.textContent = '';
+        registerError.textContent = '';
+    });
+});
+
+// ─── 检查登录状态 ────────────────────────────────────
+async function checkLogin() {
+    try {
+        const res = await fetch('/api/user/me');
+        const data = await res.json();
+        if (data.logged_in) {
+            loggedIn = true;
+            userName.textContent = data.username;
+            loginOverlay.style.display = 'none';
+            mainContent.style.display = '';
+            connect();
+        } else {
+            showLogin();
+        }
+    } catch {
+        showLogin();
+    }
+}
+
+function showLogin() {
+    loginOverlay.style.display = 'flex';
+    mainContent.style.display = 'none';
+}
+
+// ─── 登录 ────────────────────────────────────────────
+loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginError.textContent = '';
+    try {
+        const res = await fetch('/api/user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: loginUsername.value.trim(),
+                password: loginPassword.value,
+            }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            checkLogin();
+        } else {
+            loginError.textContent = data.message;
+        }
+    } catch {
+        loginError.textContent = '网络错误，请重试';
+    }
+});
+
+// ─── 注册 ────────────────────────────────────────────
+registerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    registerError.textContent = '';
+    try {
+        const res = await fetch('/api/user/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: registerUsername.value.trim(),
+                password: registerPassword.value,
+            }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            checkLogin();
+        } else {
+            registerError.textContent = data.message;
+        }
+    } catch {
+        registerError.textContent = '网络错误，请重试';
+    }
+});
+
+// ─── 注销 ────────────────────────────────────────────
+btnLogout.addEventListener('click', async () => {
+    try {
+        await fetch('/api/user/logout', { method: 'POST' });
+    } catch { /* ignore */ }
+    loggedIn = false;
+    showLogin();
+    loginUsername.value = '';
+    loginPassword.value = '';
+});
+
+// ─── WebSocket（登录后才连接） ──────────────────────
 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const wsUrl = `${protocol}//${location.host}/websocket`;
 let ws;
@@ -70,4 +186,5 @@ function renderHistory() {
     ).join('');
 }
 
-connect();
+// ─── 启动 ────────────────────────────────────────────
+checkLogin();
