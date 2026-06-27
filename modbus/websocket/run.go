@@ -11,6 +11,7 @@ package websocket
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -20,6 +21,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 )
+
+var connCounter int64
 
 const (
 	writeWait  = 10 * time.Second
@@ -32,8 +35,23 @@ func Run() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "use ws://", http.StatusUpgradeRequired)
 	})
+
+	// WebSocket 升级端点
+	r.Get("/ws", handleGlobalWS)
+
 	web.Mux.Mount("/websocket", r)
 	log.Print("✅ [WebSocket] 端点 /websocket 已注册")
+}
+
+// handleGlobalWS — 全局 WebSocket 升级处理器
+// 客户端连接 ws://host:port/websocket/ws 即可接收所有模块的广播
+func handleGlobalWS(w http.ResponseWriter, r *http.Request) {
+	connCounter++
+	connID := fmt.Sprintf("ws-%d", connCounter)
+
+	hub := GlobalHub
+	hub.AddClient("", connID)
+	HandleWebSocket(w, r, hub, connID)
 }
 
 // HandleWebSocket — 将已有连接挂载到 WebSocket 传输层

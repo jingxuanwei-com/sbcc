@@ -57,7 +57,7 @@ websocket.GlobalHub.BroadcastToType("模块名.事件名", map[string]interface{
 
 ```javascript
 // 连一条 WS，收所有模块的消息
-const ws = new WebSocket('ws://localhost:9081/websocket')
+const ws = new WebSocket('ws://localhost:9081/websocket/ws')
 
 ws.onmessage = (event) => {
   const { type, payload } = JSON.parse(event.data)
@@ -78,7 +78,7 @@ ws.onmessage = (event) => {
 ```bash
 # 需要安装 wscat
 # npm install -g wscat
-wscat -c ws://localhost:9081/websocket
+wscat -c ws://localhost:9081/websocket/ws
 ```
 
 ---
@@ -124,9 +124,14 @@ if websocket.GlobalHub.Count() == 0 {
 }
 ```
 
-### `hub.HandleWebSocket(w, r)`
+### `HandleWebSocket(w, r, hub, connID)`
 
-WebSocket 握手处理器。已在 `run.go` 中自动注册到 `/websocket`，一般无需手动调用。
+WebSocket 握手处理器。已在 `run.go` 中自动注册到 `/websocket/ws`，一般无需手动调用。
+
+参数：
+- `w` / `r` — HTTP 响应和请求
+- `hub` — 要使用的 Hub 实例（通常传 `GlobalHub`）
+- `connID` — 连接 ID（需先通过 `hub.AddClient()` 注册）
 
 ---
 
