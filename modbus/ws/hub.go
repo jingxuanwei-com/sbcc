@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 var (
 	mu       sync.Mutex
 	conns    = map[string]*websocket.Conn{}
+	connIPs  = map[string]string{}              // connID → IP 地址
 	tagConns = map[string]map[string]struct{}{} // tag → set of connIDs
 	connTags = map[string]map[string]struct{}{} // connID → set of tags
 )
@@ -32,6 +35,30 @@ func randID() string {
 	b := make([]byte, 8)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// realIP 从请求中提取真实客户端 IP，优先取 X-Forwarded-For / X-Real-IP。
+func realIP(r *http.Request) string {
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if i := strings.Index(fwd, ","); i > 0 {
+			return strings.TrimSpace(fwd[:i])
+		}
+		return strings.TrimSpace(fwd)
+	}
+	if real := r.Header.Get("X-Real-IP"); real != "" {
+		return strings.TrimSpace(real)
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+// GetIP 返回指定连接 ID 的客户端 IP 地址。
+func GetIP(connID string) string {
+	mu.Lock()
+	defer mu.Unlock()
+	return connIPs[connID]
 }
 
 // ─── 标签管理 ─────────────────────────────────────────
@@ -102,6 +129,7 @@ func GetTags(connID string) []string {
 
 // removeConnTags 移除指定连接的所有标签（内部调用，不锁）。
 func removeConnTags(connID string) {
+	delete(connIPs, connID)
 	if set := connTags[connID]; set != nil {
 		for tag := range set {
 			if s := tagConns[tag]; s != nil {
@@ -171,9 +199,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	id := randID()
 	conns[id] = c
+	connIPs[id] = realIP(r)
 	n := len(conns)
 	mu.Unlock()
-	log.Printf("🔗 [WS] %s（在线: %d）", id, n)
+	log.Printf("🔗 [WS] %s（在线: %d） [%s]", id, n, connIPs[id])
 
 	defer func() {
 		c.Close()

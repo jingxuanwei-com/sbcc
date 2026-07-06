@@ -27,6 +27,9 @@ ws.RemoveTag(connID, "group:admin")                // 移除标签
 ws.GetConnIDsByTag("room:chat")                    // 获取标签下的所有连接ID
 ws.GetTags(connID)                                 // 获取连接的所有标签
 
+// ─── 获取连接 IP ──────────────────────
+ip := ws.GetIP("a1b2c3d4e5f6a7b8") // 返回 "192.168.1.100"
+
 // ─── 接收客户端消息 ───────────────────
 ws.OnMessage = func(connID string, data []byte) {
     log.Printf("[%s] 收到: %s", connID, data)
