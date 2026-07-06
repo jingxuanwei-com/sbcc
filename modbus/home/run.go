@@ -16,13 +16,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-//go:embed templates/index.html static/*
+//go:embed templates static
 var content embed.FS
 
-var tmpl = template.Must(template.ParseFS(content, "templates/index.html"))
-
 func Run() {
-
 	r := chi.NewRouter()
 	// ... 这里可以无脑复制官方文档的代码 ...
 
@@ -40,9 +37,9 @@ func Run() {
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
+	tmpl := template.Must(template.ParseFS(content, "templates/index.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err := tmpl.Execute(w, nil)
-	if err != nil {
+	if err := tmpl.Execute(w, nil); err != nil {
 		http.Error(w, "模板错误: "+err.Error(), http.StatusInternalServerError)
 	}
 }
