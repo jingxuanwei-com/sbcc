@@ -14,9 +14,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// peer 包装一个 WebSocket 连接，自带写锁保证并发安全。
+type peer struct {
+	conn *websocket.Conn
+	wmu  sync.Mutex
+}
+
 var (
 	mu       sync.Mutex
-	conns    = map[string]*websocket.Conn{}
+	peers    = map[string]*peer{}
 	connIPs  = map[string]string{}              // connID → IP 地址
 	tagConns = map[string]map[string]struct{}{} // tag → set of connIDs
 	connTags = map[string]map[string]struct{}{} // connID → set of tags
@@ -78,7 +84,7 @@ func GetConnIDsByIP(ip string) []string {
 func CountAll() int {
 	mu.Lock()
 	defer mu.Unlock()
-	return len(conns)
+	return len(peers)
 }
 
 // CountByIP 返回指定 IP 的连接数。
@@ -105,8 +111,8 @@ func CountByTag(tag string) int {
 func GetAllConnIDs() []string {
 	mu.Lock()
 	defer mu.Unlock()
-	ids := make([]string, 0, len(conns))
-	for id := range conns {
+	ids := make([]string, 0, len(peers))
+	for id := range peers {
 		ids = append(ids, id)
 	}
 	return ids
@@ -140,7 +146,7 @@ func GetStats() *ConnStats {
 	defer mu.Unlock()
 
 	s := &ConnStats{
-		Total: len(conns),
+		Total: len(peers),
 		ByIP:  map[string]int{},
 		ByTag: map[string]int{},
 	}
@@ -220,8 +226,8 @@ func GetTags(connID string) []string {
 	return tags
 }
 
-// removeConnTags 移除指定连接的所有标签（内部调用，不锁）。
-func removeConnTags(connID string) {
+// removeConnMeta 移除指定连接的所有元数据（IP、标签）（内部调用，不锁）。
+func removeConnMeta(connID string) {
 	delete(connIPs, connID)
 	if set := connTags[connID]; set != nil {
 		for tag := range set {
@@ -248,37 +254,80 @@ func Send(id string, data map[string]any) {
 		return
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-
 	switch {
 	case id == "all":
-		for cid, c := range conns {
-			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if e := c.WriteMessage(websocket.TextMessage, msg); e != nil {
-				delete(conns, cid)
-				removeConnTags(cid)
+		// 快照目标列表，避免长时间持锁
+		mu.Lock()
+		targets := make([]*peer, 0, len(peers))
+		for _, p := range peers {
+			targets = append(targets, p)
+		}
+		mu.Unlock()
+
+		for _, p := range targets {
+			p.wmu.Lock()
+			p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if e := p.conn.WriteMessage(websocket.TextMessage, msg); e != nil {
+				p.wmu.Unlock()
+				mu.Lock()
+				delete(peers, findPeerID(p))
+				removeConnMeta(findPeerID(p))
+				mu.Unlock()
+				continue
 			}
+			p.wmu.Unlock()
 		}
 
 	case len(id) > 4 && id[:4] == "tag:":
 		tag := id[4:]
-		for cid := range tagConns[tag] {
-			if c := conns[cid]; c != nil {
-				c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				if e := c.WriteMessage(websocket.TextMessage, msg); e != nil {
-					delete(conns, cid)
-					removeConnTags(cid)
-				}
+		mu.Lock()
+		set := tagConns[tag]
+		targets := make([]*peer, 0, len(set))
+		for cid := range set {
+			if p := peers[cid]; p != nil {
+				targets = append(targets, p)
 			}
+		}
+		mu.Unlock()
+
+		for _, p := range targets {
+			p.wmu.Lock()
+			p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if e := p.conn.WriteMessage(websocket.TextMessage, msg); e != nil {
+				p.wmu.Unlock()
+				mu.Lock()
+				cid := findPeerID(p)
+				delete(peers, cid)
+				removeConnMeta(cid)
+				mu.Unlock()
+				continue
+			}
+			p.wmu.Unlock()
 		}
 
 	default:
-		if c := conns[id]; c != nil {
-			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			c.WriteMessage(websocket.TextMessage, msg)
+		mu.Lock()
+		p := peers[id]
+		mu.Unlock()
+
+		if p == nil {
+			return
+		}
+		p.wmu.Lock()
+		defer p.wmu.Unlock()
+		p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		p.conn.WriteMessage(websocket.TextMessage, msg)
+	}
+}
+
+// findPeerID 从 peers 中反查 peer 的 ID（调用方需持 mu）。
+func findPeerID(p *peer) string {
+	for id, v := range peers {
+		if v == p {
+			return id
 		}
 	}
+	return ""
 }
 
 // Handler /ws 的 HTTP 处理器
@@ -291,18 +340,19 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	mu.Lock()
 	id := randID()
-	conns[id] = c
+	p := &peer{conn: c}
+	peers[id] = p
 	connIPs[id] = realIP(r)
-	n := len(conns)
+	n := len(peers)
 	mu.Unlock()
 	log.Printf("🔗 [WS] %s（在线: %d） [%s]", id, n, connIPs[id])
 
 	defer func() {
 		c.Close()
 		mu.Lock()
-		delete(conns, id)
-		removeConnTags(id) // 断开时自动清除所有标签
-		n := len(conns)
+		delete(peers, id)
+		removeConnMeta(id) // 断开时自动清除 IP 和标签
+		n := len(peers)
 		mu.Unlock()
 		log.Printf("🔌 [WS] %s（在线: %d）", id, n)
 	}()
