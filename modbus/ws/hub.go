@@ -1,7 +1,6 @@
-package websocket
+package ws
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coder/websocket"
+	"github.com/gorilla/websocket"
 )
 
 var (
@@ -20,6 +19,12 @@ var (
 
 // OnMessage 收到客户端消息时的回调，connID 是发送者的连接 ID
 var OnMessage func(connID string, data []byte)
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // 允许所有来源
+	},
+}
 
 func randID() string {
 	b := make([]byte, 8)
@@ -39,22 +44,20 @@ func Send(id string, data map[string]any) {
 
 	if id == "all" {
 		for cid, c := range conns {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			if e := c.Write(ctx, websocket.MessageText, msg); e != nil {
+			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if e := c.WriteMessage(websocket.TextMessage, msg); e != nil {
 				delete(conns, cid)
 			}
-			cancel()
 		}
 	} else if c := conns[id]; c != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		c.Write(ctx, websocket.MessageText, msg)
-		cancel()
+		c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		c.WriteMessage(websocket.TextMessage, msg)
 	}
 }
 
-// Handler /websocket 的 HTTP 处理器
+// Handler /ws 的 HTTP 处理器
 func Handler(w http.ResponseWriter, r *http.Request) {
-	c, err := websocket.Accept(w, r, nil)
+	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("❌ [WS] 升级失败: %v", err)
 		return
@@ -68,7 +71,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("🔗 [WS] %s（在线: %d）", id, n)
 
 	defer func() {
-		c.CloseNow()
+		c.Close()
 		mu.Lock()
 		delete(conns, id)
 		n := len(conns)
@@ -77,7 +80,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for {
-		_, msg, err := c.Read(context.Background())
+		_, msg, err := c.ReadMessage()
 		if err != nil {
 			return
 		}

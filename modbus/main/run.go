@@ -11,7 +11,7 @@ import (
 	"modbus/sqlx"
 	"modbus/sub"
 	"modbus/user"
-	"modbus/websocket"
+	"modbus/ws"
 )
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 	scs.Run()
 
 	// WebSocket 全局端点注册（依赖 scs）
-	websocket.Run()
+	ws.Run()
 
 	// 用户模块（依赖 gorm + scs）
 	user.Run()
