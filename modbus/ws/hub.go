@@ -16,6 +16,7 @@ import (
 
 // peer 包装一个 WebSocket 连接，自带写锁保证并发安全。
 type peer struct {
+	id   string
 	conn *websocket.Conn
 	wmu  sync.Mutex
 }
@@ -270,8 +271,8 @@ func Send(id string, data map[string]any) {
 			if e := p.conn.WriteMessage(websocket.TextMessage, msg); e != nil {
 				p.wmu.Unlock()
 				mu.Lock()
-				delete(peers, findPeerID(p))
-				removeConnMeta(findPeerID(p))
+				delete(peers, p.id)
+				removeConnMeta(p.id)
 				mu.Unlock()
 				continue
 			}
@@ -296,9 +297,8 @@ func Send(id string, data map[string]any) {
 			if e := p.conn.WriteMessage(websocket.TextMessage, msg); e != nil {
 				p.wmu.Unlock()
 				mu.Lock()
-				cid := findPeerID(p)
-				delete(peers, cid)
-				removeConnMeta(cid)
+				delete(peers, p.id)
+				removeConnMeta(p.id)
 				mu.Unlock()
 				continue
 			}
@@ -320,16 +320,6 @@ func Send(id string, data map[string]any) {
 	}
 }
 
-// findPeerID 从 peers 中反查 peer 的 ID（调用方需持 mu）。
-func findPeerID(p *peer) string {
-	for id, v := range peers {
-		if v == p {
-			return id
-		}
-	}
-	return ""
-}
-
 // Handler /ws 的 HTTP 处理器
 func Handler(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
@@ -340,7 +330,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	mu.Lock()
 	id := randID()
-	p := &peer{conn: c}
+	p := &peer{id: id, conn: c}
 	peers[id] = p
 	connIPs[id] = realIP(r)
 	n := len(peers)
@@ -351,7 +341,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		c.Close()
 		mu.Lock()
 		delete(peers, id)
-		removeConnMeta(id) // 断开时自动清除 IP 和标签
+		removeConnMeta(id)
 		n := len(peers)
 		mu.Unlock()
 		log.Printf("🔌 [WS] %s（在线: %d）", id, n)
