@@ -61,6 +61,99 @@ func GetIP(connID string) string {
 	return connIPs[connID]
 }
 
+// GetConnIDsByIP 返回指定 IP 的所有连接 ID。
+func GetConnIDsByIP(ip string) []string {
+	mu.Lock()
+	defer mu.Unlock()
+	var ids []string
+	for id, addr := range connIPs {
+		if addr == ip {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// CountAll 返回当前总连接数。
+func CountAll() int {
+	mu.Lock()
+	defer mu.Unlock()
+	return len(conns)
+}
+
+// CountByIP 返回指定 IP 的连接数。
+func CountByIP(ip string) int {
+	mu.Lock()
+	defer mu.Unlock()
+	n := 0
+	for _, addr := range connIPs {
+		if addr == ip {
+			n++
+		}
+	}
+	return n
+}
+
+// CountByTag 返回指定标签的连接数。
+func CountByTag(tag string) int {
+	mu.Lock()
+	defer mu.Unlock()
+	return len(tagConns[tag])
+}
+
+// GetAllConnIDs 返回所有连接 ID。
+func GetAllConnIDs() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	ids := make([]string, 0, len(conns))
+	for id := range conns {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// GetAllIPs 返回当前所有不同的客户端 IP。
+func GetAllIPs() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	seen := map[string]struct{}{}
+	for _, addr := range connIPs {
+		seen[addr] = struct{}{}
+	}
+	ips := make([]string, 0, len(seen))
+	for ip := range seen {
+		ips = append(ips, ip)
+	}
+	return ips
+}
+
+// ConnStats 连接概要统计。
+type ConnStats struct {
+	Total   int            // 总连接数
+	IPCount int            // 不同 IP 数量
+	ByIP    map[string]int // 每个 IP 的连接数
+	ByTag   map[string]int // 每个标签的连接数
+}
+
+func GetStats() *ConnStats {
+	mu.Lock()
+	defer mu.Unlock()
+
+	s := &ConnStats{
+		Total: len(conns),
+		ByIP:  map[string]int{},
+		ByTag: map[string]int{},
+	}
+	for _, addr := range connIPs {
+		s.ByIP[addr]++
+	}
+	for tag, set := range tagConns {
+		s.ByTag[tag] = len(set)
+	}
+	s.IPCount = len(s.ByIP)
+	return s
+}
+
 // ─── 标签管理 ─────────────────────────────────────────
 
 // AddTag 为指定连接添加一个或多个标签。
