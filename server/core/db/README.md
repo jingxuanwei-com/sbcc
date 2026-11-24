@@ -1,23 +1,37 @@
 # DB 模块
 
-DB 模块负责数据库连接管理，支持 SQLite、MySQL、PostgreSQL（ORM 底层为 gorm）。
+数据库连接管理，支持 SQLite、MySQL、PostgreSQL，ORM 底层为 gorm。
 
-SQLite 连接前会自动创建 SBCC_DB_PATH 所在目录（父目录不存在时报 "unable to open database file"）。
+只负责连接的建立与关闭；表结构定义与迁移在 model 模块。
 
-# 使用方法
+## 配置
 
-db.DB 全局数据库实例
+读取 `data/config.yaml` 的 `db` 段：
 
-db.Start() 启动时检查初始化状态，未初始化则跳过连接
-db.Stop() 关闭数据库连接
-db.Restart() 强制重连（关闭旧连接 → 重新读取配置 → 连接）
-db.Reload() 智能重连（配置无变化且已连接则跳过，否则重连）
-db.Status() 获取数据库状态
+```yaml
+db:
+  type: sqlite          # sqlite / mysql / pgsql
+  path: data/db/sbcc.db # SQLite 文件路径
+  host: ""              # MySQL / PostgreSQL 使用
+  port: ""
+  name: ""
+  user: ""
+  password: ""
+```
 
-# Status 返回结构体
+- SQLite：使用 `path`，连接前自动创建文件所在目录
+- MySQL / PostgreSQL：使用 `host`、`port`、`name`、`user`、`password`
 
-Type - 数据库类型（sqlite/mysql/postgresql）
-Host - 主机地址
-Port - 端口
-Name - 数据库名
-Status - 连接状态（connected/disconnected）
+## 使用方法
+
+```go
+db.Start() // 按配置连接数据库；未完成初始化（install=false）时跳过
+db.Stop()  // 关闭连接
+```
+
+`db.DB` 为全局 `*gorm.DB` 实例，连接成功后直接使用。
+
+## 说明
+
+- 连接失败只打印错误日志，不 panic
+- 不提供重连 / 重载 / 状态查询；修改配置后重启进程生效

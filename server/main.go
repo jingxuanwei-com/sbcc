@@ -1,12 +1,16 @@
 package main
 
 import (
-	"server/core/env"
+	"server/core/config"
 	"server/core/motd"
+	"server/core/server"
+	"server/core/web"
 )
 
 func main() {
 	motd.Start()
-	env.Start()
+	config.Start()
+	web.Start()
+	server.Start()
 
 }

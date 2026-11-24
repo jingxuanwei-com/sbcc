@@ -3,8 +3,10 @@ package web
 
 import (
 	"fmt"
-	"github.com/1szt/go-pkg/env"
+
 	"github.com/gin-gonic/gin"
+
+	"server/core/config"
 )
 
 // Engine 全局路由引擎，各业务模块通过它注册自己的路由
@@ -14,7 +16,7 @@ var Engine *gin.Engine
 // 必须在所有业务模块注册路由之前调用（gin 中间件对之后注册的路由才生效）
 func Start() {
 	// 非调试模式切换 gin 为 release，屏蔽路由注册等调试日志刷屏
-	if env.Get("SBCC_DEBUG") != "true" {
+	if !config.Cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	Engine = gin.New()
